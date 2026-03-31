@@ -674,32 +674,26 @@ export default {
       return [...new Set(candidates.filter(Boolean))]
     }
 
-    const normalizeMonsterName = (value) => {
-      if (!value || typeof value !== 'string') return ''
-      return value.toLowerCase().replaceAll('_', ' ').replace(/\s+/g, ' ').trim()
-    }
-
     const resolveMonsterIdByName = async (query) => {
       if (/^\d+$/.test(query)) return query
 
-      const endpoint = `/api/irowiki/db/monster-search/?search&name=${encodeURIComponent(query)}`
-      const response = await fetch(endpoint, { cache: 'no-store' })
-      if (!response.ok) return null
+      const candidates = buildMonsterRequestCandidates(query)
+      for (const candidate of candidates) {
+        try {
+          const endpoint = `/api/ragnapi/v1/old-times/monsters/${encodeURIComponent(candidate)}`
+          const response = await fetch(endpoint, { cache: 'no-store' })
+          if (!response.ok) continue
 
-      const html = await response.text()
-      const matches = [...html.matchAll(/<a href="\/db\/monster-info\/(\d+)\/">([^<]+)<\/a>/gi)].map((match) => ({
-        id: match[1],
-        name: match[2]
-      }))
+          const data = await response.json()
+          if (data && data.monster_id) {
+            return String(data.monster_id)
+          }
+        } catch {
+          continue
+        }
+      }
 
-      if (!matches.length) return null
-
-      const normalizedQuery = normalizeMonsterName(query)
-      const exactMatch = matches.find((match) => normalizeMonsterName(match.name) === normalizedQuery)
-      if (exactMatch) return exactMatch.id
-
-      const partialMatch = matches.find((match) => normalizeMonsterName(match.name).includes(normalizedQuery))
-      return partialMatch ? partialMatch.id : matches[0].id
+      return null
     }
 
     const searchMonsterDrops = async () => {
