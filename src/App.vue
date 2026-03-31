@@ -670,8 +670,16 @@ export default {
     const buildMonsterRequestCandidates = (query) => {
       const normalized = query.trim()
       const slug = normalized.toLowerCase().replaceAll(' ', '_')
-      const candidates = [normalized, slug]
+      const compact = normalized.toLowerCase().replaceAll(' ', '')
+      const candidates = [normalized, slug, compact]
       return [...new Set(candidates.filter(Boolean))]
+    }
+
+    const extractMonsterIdFromIrowikiSearch = (html) => {
+      if (!html || typeof html !== 'string') return null
+
+      const match = html.match(/\/db\/monster-info\/(\d+)\//i)
+      return match ? match[1] : null
     }
 
     const resolveMonsterIdByName = async (query) => {
@@ -684,13 +692,34 @@ export default {
           const response = await fetch(endpoint, { cache: 'no-store' })
           if (!response.ok) continue
 
-          const data = await response.json()
+          const text = await response.text()
+          if (!text || !text.trim()) continue
+
+          let data = null
+          try {
+            data = JSON.parse(text)
+          } catch {
+            continue
+          }
+
           if (data && data.monster_id) {
             return String(data.monster_id)
           }
         } catch {
           continue
         }
+      }
+
+      try {
+        const irowikiEndpoint = `/api/irowiki/db/monster-search/?search&name=${encodeURIComponent(query)}`
+        const response = await fetch(irowikiEndpoint, { cache: 'no-store' })
+        if (response.ok) {
+          const html = await response.text()
+          const id = extractMonsterIdFromIrowikiSearch(html)
+          if (id) return id
+        }
+      } catch {
+        // Ignore fallback errors and return null below.
       }
 
       return null
