@@ -433,13 +433,14 @@ export default {
     const fetchRateMyServerDrops = async (monsterId) => {
       if (!monsterId) return {}
 
-      const response = await fetch(`/api/rms/index.php?page=mob_db&mob_id=${encodeURIComponent(monsterId)}&small=1&back=1`)
-      if (!response.ok) {
+      try {
+        const response = await fetch(`/api/rms/index.php?page=mob_db&mob_id=${encodeURIComponent(monsterId)}&small=1&back=1`)
+        if (!response.ok) return {}
+        const html = await response.text()
+        return parseRateMyServerDrops(html)
+      } catch {
         return {}
       }
-
-      const html = await response.text()
-      return parseRateMyServerDrops(html)
     }
 
     const isPreRenewalMode = () => true
@@ -725,14 +726,18 @@ export default {
         let foundMonster = null
 
         for (const candidate of candidates) {
-          const endpoint = `/api/ragnapi/api/v1/old-times/monsters/${encodeURIComponent(candidate)}`
-          const response = await fetch(endpoint)
-          if (!response.ok) continue
+          try {
+            const endpoint = `/api/ragnapi/api/v1/old-times/monsters/${encodeURIComponent(candidate)}`
+            const response = await fetch(endpoint)
+            if (!response.ok) continue
 
-          const data = await response.json()
-          if (data && data.monster_id && Array.isArray(data.drops)) {
-            foundMonster = data
-            break
+            const data = await response.json()
+            if (data && data.monster_id && Array.isArray(data.drops)) {
+              foundMonster = data
+              break
+            }
+          } catch {
+            continue
           }
         }
 
@@ -747,8 +752,9 @@ export default {
         foundMonster.gif = normalizeAssetUrl(foundMonster.gif)
         monsterData.value = foundMonster
         refreshMonsterDropResults()
-      } catch {
-        monsterError.value = 'Error consultando RagnAPI. Intenta nuevamente en unos segundos.'
+      } catch (err) {
+        console.error('[Steal Search Error]', err)
+        monsterError.value = 'Error inesperado al buscar. Revisa la consola o intenta con el ID numerico del monstruo.'
       } finally {
         isMonsterLoading.value = false
       }
