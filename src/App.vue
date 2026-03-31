@@ -711,7 +711,7 @@ export default {
       }
 
       try {
-        const irowikiEndpoint = `/api/irowiki/db/monster-search/?search&name=${encodeURIComponent(query)}`
+        const irowikiEndpoint = `https://db.irowiki.org/db/monster-search/?search&name=${encodeURIComponent(query)}`
         const response = await fetch(irowikiEndpoint, { cache: 'no-store' })
         if (response.ok) {
           const html = await response.text()
