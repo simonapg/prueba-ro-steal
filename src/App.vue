@@ -675,32 +675,46 @@ export default {
       return [...new Set(candidates.filter(Boolean))]
     }
 
-    const extractMonsterIdFromIrowikiSearch = (html) => {
+    const normalizeMonsterName = (value) => {
+      return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()
+    }
+
+    const extractMonsterIdsFromIrowikiSearch = (html) => {
       if (!html || typeof html !== 'string') return null
 
-      const match = html.match(/\/db\/monster-info\/(\d+)\//i)
-      return match ? match[1] : null
+      const matches = [...html.matchAll(/\/db\/monster-info\/(\d+)\//gi)]
+      const ids = matches.map((match) => match[1]).filter(Boolean)
+      return [...new Set(ids)]
+    }
+
+    const fetchMonsterByCandidate = async (candidate) => {
+      const endpoint = `/api/ragnapi/v1/old-times/monsters/${encodeURIComponent(candidate)}`
+      const response = await fetch(endpoint, { cache: 'no-store' })
+      if (!response.ok) return null
+
+      const text = await response.text()
+      if (!text || !text.trim()) return null
+
+      try {
+        return JSON.parse(text)
+      } catch {
+        return null
+      }
     }
 
     const resolveMonsterIdByName = async (query) => {
       if (/^\d+$/.test(query)) return query
 
+      const normalizedQuery = normalizeMonsterName(query)
       const candidates = buildMonsterRequestCandidates(query)
       for (const candidate of candidates) {
         try {
-          const endpoint = `/api/ragnapi/v1/old-times/monsters/${encodeURIComponent(candidate)}`
-          const response = await fetch(endpoint, { cache: 'no-store' })
-          if (!response.ok) continue
-
-          const text = await response.text()
-          if (!text || !text.trim()) continue
-
-          let data = null
-          try {
-            data = JSON.parse(text)
-          } catch {
-            continue
-          }
+          const data = await fetchMonsterByCandidate(candidate)
 
           if (data && data.monster_id) {
             return String(data.monster_id)
@@ -715,8 +729,26 @@ export default {
         const response = await fetch(irowikiEndpoint, { cache: 'no-store' })
         if (response.ok) {
           const html = await response.text()
-          const id = extractMonsterIdFromIrowikiSearch(html)
-          if (id) return id
+          const ids = extractMonsterIdsFromIrowikiSearch(html)
+          for (const id of ids) {
+            try {
+              const data = await fetchMonsterByCandidate(id)
+              if (!data || !data.monster_id) continue
+
+              const apiName = normalizeMonsterName(data.name)
+              if (
+                apiName === normalizedQuery ||
+                apiName.includes(normalizedQuery) ||
+                normalizedQuery.includes(apiName)
+              ) {
+                return String(data.monster_id)
+              }
+            } catch {
+              continue
+            }
+          }
+
+          if (ids.length > 0) return ids[0]
         }
       } catch {
         // Ignore fallback errors and return null below.
