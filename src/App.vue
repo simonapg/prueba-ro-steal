@@ -727,7 +727,7 @@ export default {
 
         for (const candidate of candidates) {
           try {
-            const endpoint = `/api/ragnapi/api/v1/old-times/monsters/${encodeURIComponent(candidate)}`
+            const endpoint = `/api/ragnapi/v1/old-times/monsters/${encodeURIComponent(candidate)}`
             const response = await fetch(endpoint)
             if (!response.ok) continue
 
