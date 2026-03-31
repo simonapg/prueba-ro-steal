@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     ? '?' + queryEntries.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')
     : ''
 
-  const url = `https://ragnapi.com/${path}${qs}`
+  const url = `https://ragnapi.com/api/${path}${qs}`
 
   try {
     const response = await fetch(url, {
