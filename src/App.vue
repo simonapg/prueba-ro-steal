@@ -434,8 +434,8 @@ export default {
       if (!monsterId) return {}
 
       try {
-        const rmsUrl = `https://ratemyserver.net/index.php?page=mob_db&mob_id=${encodeURIComponent(monsterId)}&small=1&back=1`
-        const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(rmsUrl)}`)
+        const endpoint = `/api/rms/index.php?page=mob_db&mob_id=${encodeURIComponent(monsterId)}&small=1&back=1`
+        const response = await fetch(endpoint, { cache: 'no-store' })
         if (!response.ok) return {}
         const html = await response.text()
         return parseRateMyServerDrops(html)
@@ -682,8 +682,8 @@ export default {
     const resolveMonsterIdByName = async (query) => {
       if (/^\d+$/.test(query)) return query
 
-      const iroWikiUrl = `https://db.irowiki.org/db/monster-search/?search&name=${encodeURIComponent(query)}`
-      const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(iroWikiUrl)}`)
+      const endpoint = `/api/irowiki/db/monster-search/?search&name=${encodeURIComponent(query)}`
+      const response = await fetch(endpoint, { cache: 'no-store' })
       if (!response.ok) return null
 
       const html = await response.text()
@@ -729,9 +729,8 @@ export default {
 
         for (const candidate of candidates) {
           try {
-            const ragnApiUrl = `https://ragnapi.com/api/v1/old-times/monsters/${encodeURIComponent(candidate)}`
-            const endpoint = `https://api.allorigins.win/raw?url=${encodeURIComponent(ragnApiUrl)}`
-            const response = await fetch(endpoint)
+            const endpoint = `/api/ragnapi/v1/old-times/monsters/${encodeURIComponent(candidate)}`
+            const response = await fetch(endpoint, { cache: 'no-store' })
             if (!response.ok) continue
 
             const data = await response.json()
