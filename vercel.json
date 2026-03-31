@@ -1,4 +1,22 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/ragnapi/:path*",
+      "destination": "https://ragnapi.com/api/:path*"
+    },
+    {
+      "source": "/api/irowiki/:path*",
+      "destination": "https://db.irowiki.org/:path*"
+    },
+    {
+      "source": "/api/rms/:path*",
+      "destination": "https://ratemyserver.net/:path*"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/index.html"
+    }
+  ]
 }
