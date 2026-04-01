@@ -9,7 +9,7 @@
         <img :src="noviceImage" alt="Novice" class="novice-img" />
       </div>
       <h1 class="title-16bit">Calculadora de Steal - Ragnarok Online</h1>
-      <p class="subtitle">Fórmula: AdjustedDropRatio = DropRatio × (DEX + 3×Skill level - MonsterDEX + 10) / 100</p>
+      <p class="subtitle">Formula Hercules: StealBase = floor((DEX user - DEX mob)/2) + 6xSkill + 4 | Chance slot = (StealBase x DropRatio)/100</p>
       
       <div class="calculator">
         <div class="input-group">
@@ -105,9 +105,9 @@
                       <img :src="resultGifFor(slot.isLastSlot ? 0 : slot.adjustedChance)" alt="Tier de chance" class="result-gif-inline" />
                     </div>
                   </div>
-                  <p class="drop-rate-flow">Steal check (Lv {{ skillLevel || 0 }}): {{ slot.stealBaseChance.toFixed(2) }}% · Item check: {{ slot.itemCheckChance.toFixed(2) }}%</p>
-                  <p class="drop-rate-flow">Roll item: {{ slot.itemRollThreshold }} / 10000 · Roll steal: {{ slot.stealRollThreshold }} / 10000</p>
-                  <p class="drop-rate-flow">Chance de llegar a este slot: {{ slot.reachChance.toFixed(2) }}% · Chance por slot: {{ slot.slotFinalChance.toFixed(2) }}%</p>
+                  <p class="drop-rate-flow">Steal base (Hercules): {{ slot.stealBaseChance.toFixed(2) }}% · Drop check: {{ slot.itemCheckChance.toFixed(2) }}%</p>
+                  <p class="drop-rate-flow">Roll drop: {{ slot.itemRollThreshold }} / 10000 · Roll steal: {{ slot.stealRollThreshold }} / 10000</p>
+                  <p class="drop-rate-flow">Chance de llegar a este slot: {{ slot.reachChance.toFixed(2) }}% · Chance local: {{ slot.slotChanceLocal.toFixed(2) }}%</p>
                   <p class="drop-adjusted" v-if="!slot.isLastSlot">Chance Steal final (encadenada): {{ slot.slotFinalChance.toFixed(2) }}%</p>
                   <p class="drop-adjusted" v-else>Ultimo slot: 0% (no robable)</p>
                 </div>
@@ -330,7 +330,6 @@ import gifVerde from '@/assets/images/verde.gif'
 
 const PLAYLIST_ID = 'PL_ePhf-qAdCT8-i7apNym6qmB9giYhWp3'
 const PRE_RE_TARGET_RATE = 5
-const STEAL_BASE_BY_LEVEL = [0, 10, 16, 22, 28, 34, 40, 46, 52, 58, 64]
 const PLAYER_MIN_WIDTH = 1025
 
 export default {
@@ -446,14 +445,18 @@ export default {
 
     const isPreRenewalMode = () => true
 
-    const calculateAdjustedChance = (baseRate, dexUserValue, skillLevelValue) => {
+    const herculesStealBaseChance = (dexUserValue, dexMobValue, skillLevelValue, bonus = 0) => {
       const dexUser = toValidNumber(dexUserValue)
-      const dexMob = toValidNumber(monsterDex.value)
+      const dexMob = toValidNumber(dexMobValue)
       const stealLevel = toValidNumber(skillLevelValue)
       if (dexUser === null || dexMob === null || stealLevel === null) return 0
 
-      const variation = dexUser + (3 * stealLevel) - dexMob + 10
-      return baseRate * (variation / 100)
+      const rawChance = Math.floor((dexUser - dexMob) / 2) + (stealLevel * 6) + 4 + bonus
+      return clampPercent(rawChance)
+    }
+
+    const slotLocalChancePercent = (stealBaseChancePercent, itemDropChancePercent) => {
+      return clampPercent((clampPercent(stealBaseChancePercent) * clampPercent(itemDropChancePercent)) / 100)
     }
 
     const clampPercent = (value) => {
@@ -468,9 +471,12 @@ export default {
       return !!(dexUser !== null && dexMob !== null && stealLvl !== null && stealLvl >= 1 && stealLvl <= 10)
     }
 
-    const stealBaseChanceForLevel = (levelValue) => {
-      const level = Math.max(1, Math.min(10, Math.trunc(levelValue || 0)))
-      return STEAL_BASE_BY_LEVEL[level] ?? 0
+    const resolveMonsterDex = (monsterPayload) => {
+      return toValidNumber(
+        monsterPayload?.main_atb?.dex
+        ?? monsterPayload?.dex
+        ?? monsterPayload?.monster_dex
+      ) ?? 0
     }
 
     const validateMonsterSearchInputs = () => {
@@ -505,7 +511,12 @@ export default {
 
       const dropOccurrences = {}
       let remainingChance = 1
-      const stealBaseChance = stealBaseChanceForLevel(monsterSkillLevel.value)
+      const monsterDexValue = resolveMonsterDex(monsterData.value)
+      const stealBaseChance = herculesStealBaseChance(
+        monsterUserDex.value,
+        monsterDexValue,
+        monsterSkillLevel.value
+      )
       const dropsWithCoin = [
         {
           name: 'poring_coin',
@@ -532,10 +543,10 @@ export default {
           : (isPreRenewalMode() ? PRE_RE_TARGET_RATE : 1)
         const targetRateRaw = vanillaRate * targetMultiplier
         const targetRate = Math.min(targetRateRaw, 100)
-        const adjustedChance = clampPercent(calculateAdjustedChance(targetRate, monsterUserDex.value, monsterSkillLevel.value))
         const isLastSlot = index === (dropsWithCoin.length - 1)
-        const itemCheckChance = isLastSlot ? 0 : adjustedChance
-        const perSlotSuccessChance = (stealBaseChance / 100) * (itemCheckChance / 100)
+        const itemCheckChance = isLastSlot ? 0 : targetRate
+        const slotChanceLocal = slotLocalChancePercent(stealBaseChance, itemCheckChance)
+        const perSlotSuccessChance = slotChanceLocal / 100
         const reachChance = remainingChance * 100
         const slotFinalChance = remainingChance * perSlotSuccessChance * 100
         remainingChance *= (1 - perSlotSuccessChance)
@@ -552,11 +563,12 @@ export default {
           targetMultiplier,
           apiDifferencePercent,
           isSynthetic: !!drop.isSynthetic,
-          adjustedChance,
+          adjustedChance: slotFinalChance,
           slotIndex: index + 1,
           isLastSlot,
           itemCheckChance,
           stealBaseChance,
+          slotChanceLocal,
           reachChance,
           slotFinalChance,
           itemRollThreshold: percentToThreshold10k(itemCheckChance),
@@ -594,15 +606,15 @@ export default {
         return
       }
 
-      const stealBaseChance = stealBaseChanceForLevel(stealLvl)
+      const stealBaseChance = herculesStealBaseChance(dexUser, dexMob, stealLvl)
       let remainingChance = 1
 
       manualSlotResults.value = manualSlots.value.map((slot, index) => {
         const targetRate = clampPercent(toValidNumber(slot.rate) ?? 0)
-        const adjustedChance = clampPercent(calculateAdjustedChance(targetRate, dexUser, stealLvl))
         const isLastSlot = index === manualSlots.value.length - 1
-        const itemCheckChance = isLastSlot ? 0 : adjustedChance
-        const perSlotSuccessChance = (stealBaseChance / 100) * (itemCheckChance / 100)
+        const itemCheckChance = isLastSlot ? 0 : targetRate
+        const slotChanceLocal = slotLocalChancePercent(stealBaseChance, itemCheckChance)
+        const perSlotSuccessChance = slotChanceLocal / 100
         const reachChance = remainingChance * 100
         const slotFinalChance = remainingChance * perSlotSuccessChance * 100
         remainingChance *= (1 - perSlotSuccessChance)
@@ -611,9 +623,10 @@ export default {
           id: slot.id,
           slotIndex: index + 1,
           targetRate,
-          adjustedChance,
+          adjustedChance: slotFinalChance,
           stealBaseChance,
           itemCheckChance,
+          slotChanceLocal,
           reachChance,
           slotFinalChance,
           isLastSlot,
