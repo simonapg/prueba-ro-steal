@@ -789,19 +789,58 @@ export default {
       return [...new Set(candidates.filter(Boolean))]
     }
 
-    const fetchMonsterGifById = async (monsterId) => {
+    const fetchMonsterVisualDataById = async (monsterId) => {
       const endpoint = `/api/ragnapi/v1/old-times/monsters/${encodeURIComponent(monsterId)}`
       const response = await fetch(endpoint, { cache: 'no-store' })
-      if (!response.ok) return ''
+      if (!response.ok) {
+        return { gif: '', drops: [] }
+      }
       const text = await response.text()
-      if (!text || !text.trim()) return ''
+      if (!text || !text.trim()) {
+        return { gif: '', drops: [] }
+      }
 
       try {
         const data = JSON.parse(text)
-        return normalizeAssetUrl(data?.gif || '')
+        const drops = Array.isArray(data?.drops) ? data.drops : []
+        return {
+          gif: normalizeAssetUrl(data?.gif || ''),
+          drops
+        }
       } catch {
-        return ''
+        return { gif: '', drops: [] }
       }
+    }
+
+    const mergeDropImagesFromApi = (herculesDrops, apiDrops) => {
+      if (!Array.isArray(herculesDrops) || !Array.isArray(apiDrops)) return herculesDrops
+
+      const imageBuckets = {}
+      for (const apiDrop of apiDrops) {
+        const key = normalizeItemKey(apiDrop?.name)
+        if (!key) continue
+        const img = normalizeAssetUrl(apiDrop?.img || '')
+        if (!img) continue
+        if (!imageBuckets[key]) imageBuckets[key] = []
+        imageBuckets[key].push(img)
+      }
+
+      const keyUsage = {}
+      return herculesDrops.map((drop) => {
+        const key = normalizeItemKey(drop?.name)
+        if (!key || !imageBuckets[key]?.length) {
+          return { ...drop, img: '' }
+        }
+
+        const currentIndex = keyUsage[key] || 0
+        const pickedImage = imageBuckets[key][currentIndex] || imageBuckets[key][0] || ''
+        keyUsage[key] = currentIndex + 1
+
+        return {
+          ...drop,
+          img: pickedImage
+        }
+      })
     }
 
     const searchMonsterDrops = async () => {
@@ -831,10 +870,12 @@ export default {
           return
         }
 
-        const gif = await fetchMonsterGifById(foundMonster.monster_id)
+        const visualData = await fetchMonsterVisualDataById(foundMonster.monster_id)
+        const dropsWithImages = mergeDropImagesFromApi(foundMonster.drops || [], visualData.drops || [])
         monsterData.value = {
           ...foundMonster,
-          gif
+          gif: visualData.gif,
+          drops: dropsWithImages
         }
         refreshMonsterDropResults()
       } catch (err) {
