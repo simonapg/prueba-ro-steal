@@ -5,40 +5,54 @@
         <img :src="roLogo" alt="Ragnarok Online" class="ro-logo" />
       </div>
       <div class="container">
+      <button
+        type="button"
+        class="language-toggle"
+        @click="toggleLanguage"
+        :title="t('toggleLanguage')"
+      >
+        <span aria-hidden="true">🌐</span>
+        <span>{{ language.toUpperCase() }}</span>
+      </button>
+      <div class="uaro-logo-wrapper">
+        <a href="https://uaro.net/" target="_blank" rel="noopener noreferrer">
+          <img :src="uaroLogo" alt="UA Ragnarok" class="uaro-logo" />
+        </a>
+      </div>
       <div class="novice-character">
         <img :src="noviceImage" alt="Novice" class="novice-img" />
       </div>
-      <h1 class="title-16bit">Calculadora de Steal - Ragnarok Online</h1>
-      <p class="subtitle">Formula Hercules: StealBase = floor((DEX user - DEX mob)/2) + 6xSkill + 4 | Chance slot = (StealBase x DropRatio)/100</p>
+      <h1 class="title-16bit">{{ t('calcTitle') }}</h1>
+      <p class="subtitle">{{ t('calcSubtitle') }}</p>
       
       <div class="calculator">
         <div class="input-group">
-          <label for="userDex">DEX del Usuario:</label>
+          <label for="userDex">{{ t('userDexLabel') }}</label>
           <input 
             v-model.number="userDex" 
             type="number" 
             id="userDex" 
-            placeholder="Ej: 80"
+            :placeholder="t('example80')"
           >
         </div>
 
         <div class="input-group">
-          <label for="monsterDex">DEX del Monstruo:</label>
+          <label for="monsterDex">{{ t('monsterDexLabel') }}</label>
           <input 
             v-model.number="monsterDex" 
             type="number" 
             id="monsterDex" 
-            placeholder="Ej: 50"
+            :placeholder="t('example50')"
           >
         </div>
 
         <div class="input-group">
-          <label for="skillLevel">Nivel de Steal:</label>
+          <label for="skillLevel">{{ t('stealSkillLevelLabel') }}</label>
           <input 
             v-model.number="skillLevel" 
             type="number" 
             id="skillLevel" 
-            placeholder="Ej: 10"
+            :placeholder="t('example10')"
             min="1"
             max="10"
           >
@@ -46,24 +60,24 @@
       </div>
 
       <div class="manual-slots-section">
-        <h2>Simulador Manual por Slots</h2>
+        <h2>{{ t('manualSlotsTitle') }}</h2>
         <p class="manual-slots-subtitle">
-          Agrega slots manualmente con su % de drop para simular el orden de Steal cuando el monstruo no existe en la base.
+          {{ t('manualSlotsSubtitle') }}
         </p>
 
         <div class="manual-slot-controls">
           <div class="input-group">
-            <label for="manualSlotChance">Chance del nuevo slot (%):</label>
+            <label for="manualSlotChance">{{ t('newSlotChanceLabel') }}</label>
             <input
               v-model.number="manualSlotChance"
               type="number"
               id="manualSlotChance"
-              placeholder="Ej: 12.5"
+              :placeholder="t('example125')"
               min="0"
               max="100"
             >
           </div>
-          <button type="button" class="manual-slot-btn" @click="addManualSlot">Agregar Slot</button>
+          <button type="button" class="manual-slot-btn" @click="addManualSlot">{{ t('addSlotButton') }}</button>
         </div>
 
         <p v-if="manualSlotsError" class="manual-slot-error">{{ manualSlotsError }}</p>
@@ -75,7 +89,7 @@
               class="manual-slot-chip"
               v-for="(slot, idx) in manualSlots"
               :key="slot.id"
-              :title="`Slot #${idx + 1} · ${Number(slot.rate || 0).toFixed(2)}%`"
+              :title="manualSlotChipTitle(idx, slot.rate)"
               @click="removeManualSlot(idx)"
             >
               <img :src="poringCoinImage" alt="Slot" class="manual-slot-chip-icon" />
@@ -84,11 +98,11 @@
               <span class="manual-slot-chip-remove">✕</span>
             </button>
           </div>
-          <p class="manual-slot-strip-hint">Haz clic en un icono para quitar ese slot.</p>
+          <p class="manual-slot-strip-hint">{{ t('removeSlotHint') }}</p>
         </div>
 
         <div v-if="manualSlotResults.length" class="manual-slot-results">
-          <h3>Resultado Encadenado por Slot</h3>
+          <h3>{{ t('chainedResultTitle') }}</h3>
           <div class="drop-list">
             <div
               v-for="slot in manualSlotResults"
@@ -98,26 +112,26 @@
             >
               <div class="drop-card-left">
                 <div class="drop-card-copy">
-                  <p class="drop-name">#{{ slot.slotIndex }} · Slot Manual</p>
+                  <p class="drop-name">#{{ slot.slotIndex }} · {{ t('manualSlotName') }}</p>
                   <div class="drop-meta-row">
-                    <p class="drop-base">DropRatio: {{ slot.targetRate.toFixed(2) }}%</p>
+                    <p class="drop-base">{{ t('dropRatioLabel') }}: {{ slot.targetRate.toFixed(2) }}%</p>
                     <div class="result-gif-shell drop-tier-gif">
-                      <img :src="resultGifFor(slot.isLastSlot ? 0 : slot.adjustedChance)" alt="Tier de chance" class="result-gif-inline" />
+                      <img :src="resultGifFor(slot.isLastSlot ? 0 : slot.adjustedChance)" :alt="t('chanceTierAlt')" class="result-gif-inline" />
                     </div>
                   </div>
-                  <p class="drop-rate-flow">Steal base (Hercules): {{ slot.stealBaseChance.toFixed(2) }}% · Drop check: {{ slot.itemCheckChance.toFixed(2) }}%</p>
-                  <p class="drop-rate-flow">Roll drop: {{ slot.itemRollThreshold }} / 10000 · Roll steal: {{ slot.stealRollThreshold }} / 10000</p>
-                  <p class="drop-rate-flow">Chance de llegar a este slot: {{ slot.reachChance.toFixed(2) }}% · Chance local: {{ slot.slotChanceLocal.toFixed(2) }}%</p>
-                  <p class="drop-adjusted" v-if="!slot.isLastSlot">Chance Steal final (encadenada): {{ slot.slotFinalChance.toFixed(2) }}%</p>
-                  <p class="drop-adjusted" v-else>Ultimo slot: 0% (no robable)</p>
+                  <p class="drop-rate-flow">{{ t('stealBaseLabel') }}: {{ slot.stealBaseChance.toFixed(2) }}% · {{ t('dropCheckLabel') }}: {{ slot.itemCheckChance.toFixed(2) }}%</p>
+                  <p class="drop-rate-flow">{{ t('rollDropLabel') }}: {{ slot.itemRollThreshold }} / 10000 · {{ t('rollStealLabel') }}: {{ slot.stealRollThreshold }} / 10000</p>
+                  <p class="drop-rate-flow">{{ t('reachChanceLabel') }}: {{ slot.reachChance.toFixed(2) }}% · {{ t('localChanceLabel') }}: {{ slot.slotChanceLocal.toFixed(2) }}%</p>
+                  <p class="drop-adjusted" v-if="!slot.isLastSlot">{{ t('finalChainedChanceLabel') }}: {{ slot.slotFinalChance.toFixed(2) }}%</p>
+                  <p class="drop-adjusted" v-else>{{ t('lastSlotZeroLabel') }}</p>
                 </div>
               </div>
             </div>
           </div>
 
           <div class="steal-summary">
-            <p><strong>Probabilidad total de robar algun slot:</strong> {{ manualStealSummary.totalStealChance.toFixed(2) }}%</p>
-            <p><strong>Probabilidad de no robar nada:</strong> {{ manualStealSummary.noStealChance.toFixed(2) }}%</p>
+            <p><strong>{{ t('totalStealAnySlotLabel') }}:</strong> {{ manualStealSummary.totalStealChance.toFixed(2) }}%</p>
+            <p><strong>{{ t('noStealChanceLabel') }}:</strong> {{ manualStealSummary.noStealChance.toFixed(2) }}%</p>
           </div>
         </div>
       </div>
@@ -126,40 +140,40 @@
         <div class="novice-character-right">
           <img :src="noviceImageRight" alt="Novice" class="novice-img" />
         </div>
-        <h2 class="title-16bit">Buscador de Drops por Monstruo (Pre-Renewal)</h2>
+        <h2 class="title-16bit">{{ t('monsterSearchTitle') }}</h2>
         <p class="monster-search-subtitle">
-          Buscas un monstruo en especifico? Escribe el nombre o ID y te mostramos sus drops con la chance ajustada de Steal segun tus stats.
+          {{ t('monsterSearchSubtitle') }}
         </p>
 
         <form class="monster-search-form" @submit.prevent="searchMonsterDrops">
           <div class="monster-inputs">
             <div class="input-group monster-query-group">
-              <label for="monsterQuery">Nombre o ID del Monstruo:</label>
+              <label for="monsterQuery">{{ t('monsterNameOrIdLabel') }}</label>
               <input
                 v-model.trim="monsterQuery"
                 type="text"
                 id="monsterQuery"
-                placeholder="Ej: scorpion o 1001"
+                :placeholder="t('monsterQueryPlaceholder')"
               >
             </div>
 
             <div class="input-group" :class="{ 'input-group-invalid': monsterFieldErrors.userDex }">
-              <label for="monsterUserDex">Cuanta dex tienes en total?</label>
+              <label for="monsterUserDex">{{ t('searchDexLabel') }}</label>
               <input
                 v-model.number="monsterUserDex"
                 type="number"
                 id="monsterUserDex"
-                placeholder="Ej: 80"
+                :placeholder="t('example80')"
               >
             </div>
 
             <div class="input-group" :class="{ 'input-group-invalid': monsterFieldErrors.skillLevel }">
-              <label for="monsterSkillLevel">Nivel de skill Steal?</label>
+              <label for="monsterSkillLevel">{{ t('searchStealLevelLabel') }}</label>
               <input
                 v-model.number="monsterSkillLevel"
                 type="number"
                 id="monsterSkillLevel"
-                placeholder="Ej: 10"
+                :placeholder="t('example10')"
                 min="1"
                 max="10"
               >
@@ -168,7 +182,7 @@
           </div>
 
           <button type="submit" class="monster-search-btn" :disabled="isMonsterLoading">
-            {{ isMonsterLoading ? 'Buscando...' : 'Buscar Monstruo' }}
+            {{ isMonsterLoading ? t('searchingButton') : t('searchMonsterButton') }}
           </button>
         </form>
 
@@ -179,7 +193,7 @@
             <img :src="monsterData.gif" :alt="monsterData.monster_info" class="monster-thumb" />
             <div class="monster-meta">
               <h3>{{ formatLabel(monsterData.monster_info) }}</h3>
-              <p>ID: {{ monsterData.monster_id }}</p>
+              <p>{{ t('idLabel') }}: {{ monsterData.monster_id }}</p>
             </div>
           </div>
 
@@ -195,21 +209,21 @@
                 <div class="drop-card-copy">
                     <p class="drop-name">#{{ drop.slotIndex }} · {{ formatLabel(drop.name) }}</p>
                   <div class="drop-meta-row">
-                    <p class="drop-base">DropRatio formula x{{ drop.targetMultiplier }}: {{ drop.targetRate.toFixed(2) }}%</p>
+                    <p class="drop-base">{{ t('dropRatioFormulaLabel') }} x{{ drop.targetMultiplier }}: {{ drop.targetRate.toFixed(2) }}%</p>
                     <div class="result-gif-shell drop-tier-gif">
-                      <img :src="resultGifFor(drop.isLastSlot ? 0 : drop.adjustedChance)" alt="Tier de chance" class="result-gif-inline" />
+                      <img :src="resultGifFor(drop.isLastSlot ? 0 : drop.adjustedChance)" :alt="t('chanceTierAlt')" class="result-gif-inline" />
                     </div>
                   </div>
-                    <p class="drop-adjusted" v-if="!drop.isLastSlot">Chance Steal final (encadenada): {{ drop.slotFinalChance.toFixed(2) }}%</p>
-                    <p class="drop-adjusted" v-else>Ultimo slot: 0% (no robable)</p>
+                    <p class="drop-adjusted" v-if="!drop.isLastSlot">{{ t('finalChainedChanceLabel') }}: {{ drop.slotFinalChance.toFixed(2) }}%</p>
+                    <p class="drop-adjusted" v-else>{{ t('lastSlotZeroLabel') }}</p>
                 </div>
               </div>
             </div>
           </div>
 
             <div class="steal-summary" v-if="monsterDropResults.length">
-              <p><strong>Probabilidad total de robar algun item:</strong> {{ stealChainSummary.totalStealChance.toFixed(2) }}%</p>
-              <p><strong>Probabilidad de no robar nada:</strong> {{ stealChainSummary.noStealChance.toFixed(2) }}%</p>
+              <p><strong>{{ t('totalStealAnyItemLabel') }}:</strong> {{ stealChainSummary.totalStealChance.toFixed(2) }}%</p>
+              <p><strong>{{ t('noStealChanceLabel') }}:</strong> {{ stealChainSummary.noStealChance.toFixed(2) }}%</p>
             </div>
         </div>
       </div>
@@ -225,7 +239,7 @@
       class="music-player"
       :class="{ minimized: isPlayerMinimized }"
       @click="handleMinimizedPlayerClick"
-      :title="isPlayerMinimized ? 'Abrir reproductor' : undefined"
+      :title="isPlayerMinimized ? t('openPlayer') : undefined"
     >
       <div
         v-show="isMinimizedRailVisible"
@@ -252,7 +266,7 @@
               @click.stop="togglePlayerMinimized"
               type="button"
               class="toggle-player-btn"
-              title="Minimizar reproductor"
+              :title="t('minimizePlayer')"
             >
               <span aria-hidden="true">▼</span>
             </button>
@@ -282,16 +296,16 @@
         </div>
 
         <div class="music-controls-row">
-          <button @click="prevSong" class="icon-btn" title="Cancion anterior">⏮</button>
+          <button @click="prevSong" class="icon-btn" :title="t('previousSong')">⏮</button>
           <button @click="toggleMusic" class="music-btn" :class="{ playing: isPlaying }">
             <span class="music-icon">{{ isPlaying ? '⏸' : '▶' }}</span>
-            <span class="music-label">{{ isPlaying ? 'Pausar' : 'SoundTemp' }}</span>
+            <span class="music-label">{{ isPlaying ? t('pause') : 'SoundTemp' }}</span>
           </button>
-          <button @click="nextSong" class="icon-btn" title="Siguiente cancion">⏭</button>
+          <button @click="nextSong" class="icon-btn" :title="t('nextSong')">⏭</button>
         </div>
 
         <div class="volume-row">
-          <button @click="toggleMute" class="icon-btn" title="Silenciar o activar sonido">
+          <button @click="toggleMute" class="icon-btn" :title="t('muteToggle')">
             {{ isMuted ? '🔇' : '🔊' }}
           </button>
           <input
@@ -317,6 +331,7 @@
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import bgImage from '@/assets/images/wallpaperflare-cropped.jpg'
 import roLogo from '@/assets/images/Ragnarok_Online_Logo.svg'
+import uaroLogo from '@/assets/images/uaro.webp'
 import angelingGif from '@/assets/images/4_ANGELING.gif'
 import angelingStill from '@/assets/images/4_ANGELING_static.png'
 import noviceImage from '@/assets/images/noviceprueba.png'
@@ -341,6 +356,128 @@ let herculesItemDbCache = null
 export default {
   name: 'App',
   setup() {
+    const language = ref('en')
+
+    const i18n = {
+      en: {
+        toggleLanguage: 'Switch language',
+        calcTitle: 'Steal Calculator - Ragnarok Online',
+        calcSubtitle: 'Hercules formula: StealBase = floor((DEX user - DEX mob)/2) + 6xSkill + 4 | Slot chance = (StealBase x DropRatio)/100',
+        userDexLabel: 'User DEX:',
+        monsterDexLabel: 'Monster DEX:',
+        stealSkillLevelLabel: 'Steal Skill Level:',
+        example80: 'Ex: 80',
+        example50: 'Ex: 50',
+        example10: 'Ex: 10',
+        example125: 'Ex: 12.5',
+        manualSlotsTitle: 'Manual Slot Simulator',
+        manualSlotsSubtitle: 'Add slots manually with drop % to simulate Steal order when the monster is not in the database.',
+        newSlotChanceLabel: 'New slot chance (%):',
+        addSlotButton: 'Add Slot',
+        removeSlotHint: 'Click an icon to remove that slot.',
+        chainedResultTitle: 'Chained Result by Slot',
+        manualSlotName: 'Manual Slot',
+        dropRatioLabel: 'DropRatio',
+        chanceTierAlt: 'Chance tier',
+        stealBaseLabel: 'Steal base (Hercules)',
+        dropCheckLabel: 'Drop check',
+        rollDropLabel: 'Drop roll',
+        rollStealLabel: 'Steal roll',
+        reachChanceLabel: 'Chance to reach this slot',
+        localChanceLabel: 'Local chance',
+        finalChainedChanceLabel: 'Final Steal chance (chained)',
+        lastSlotZeroLabel: 'Last slot: 0% (not stealable)',
+        totalStealAnySlotLabel: 'Total chance to steal any slot',
+        totalStealAnyItemLabel: 'Total chance to steal any item',
+        noStealChanceLabel: 'Chance to steal nothing',
+        monsterSearchTitle: 'Monster Drop Finder (Pre-Renewal)',
+        monsterSearchSubtitle: 'Looking for a specific monster? Type name or ID and we show drops with Steal chance based on your stats.',
+        monsterNameOrIdLabel: 'Monster Name or ID:',
+        monsterQueryPlaceholder: 'Ex: scorpion or 1001',
+        searchDexLabel: 'How much total DEX do you have?',
+        searchStealLevelLabel: 'Steal skill level?',
+        searchingButton: 'Searching...',
+        searchMonsterButton: 'Search Monster',
+        idLabel: 'ID',
+        dropRatioFormulaLabel: 'DropRatio formula',
+        openPlayer: 'Open player',
+        minimizePlayer: 'Minimize player',
+        previousSong: 'Previous song',
+        nextSong: 'Next song',
+        pause: 'Pause',
+        muteToggle: 'Mute or unmute',
+        errorFillManualBase: 'Fill user DEX, monster DEX and Steal level before adding slots.',
+        errorManualSlotRange: 'Enter a valid chance between 0 and 100 to add the slot.',
+        errorSearchFillStats: 'Before searching, fill DEX and Steal level in the finder block (1-10).',
+        errorSearchQuery: 'Enter a monster name or ID.',
+        errorMonsterNotFound: 'Monster not found. Try another name or a numeric ID (ex: 1001).',
+        errorSearchUnexpected: 'Unexpected search error. Check console or try the monster numeric ID.',
+        defaultSongTitle: 'Playlist ready to play',
+        defaultSongAuthor: 'YouTube playlist'
+      },
+      es: {
+        toggleLanguage: 'Cambiar idioma',
+        calcTitle: 'Calculadora de Steal - Ragnarok Online',
+        calcSubtitle: 'Formula Hercules: StealBase = floor((DEX user - DEX mob)/2) + 6xSkill + 4 | Chance slot = (StealBase x DropRatio)/100',
+        userDexLabel: 'DEX del Usuario:',
+        monsterDexLabel: 'DEX del Monstruo:',
+        stealSkillLevelLabel: 'Nivel de Skill Steal:',
+        example80: 'Ej: 80',
+        example50: 'Ej: 50',
+        example10: 'Ej: 10',
+        example125: 'Ej: 12.5',
+        manualSlotsTitle: 'Simulador Manual por Slots',
+        manualSlotsSubtitle: 'Agrega slots manualmente con su % de drop para simular el orden de Steal cuando el monstruo no existe en la base.',
+        newSlotChanceLabel: 'Chance del nuevo slot (%):',
+        addSlotButton: 'Agregar Slot',
+        removeSlotHint: 'Haz clic en un icono para quitar ese slot.',
+        chainedResultTitle: 'Resultado Encadenado por Slot',
+        manualSlotName: 'Slot Manual',
+        dropRatioLabel: 'DropRatio',
+        chanceTierAlt: 'Tier de chance',
+        stealBaseLabel: 'Steal base (Hercules)',
+        dropCheckLabel: 'Drop check',
+        rollDropLabel: 'Roll drop',
+        rollStealLabel: 'Roll steal',
+        reachChanceLabel: 'Chance de llegar a este slot',
+        localChanceLabel: 'Chance local',
+        finalChainedChanceLabel: 'Chance Steal final (encadenada)',
+        lastSlotZeroLabel: 'Ultimo slot: 0% (no robable)',
+        totalStealAnySlotLabel: 'Probabilidad total de robar algun slot',
+        totalStealAnyItemLabel: 'Probabilidad total de robar algun item',
+        noStealChanceLabel: 'Probabilidad de no robar nada',
+        monsterSearchTitle: 'Buscador de Drops por Monstruo (Pre-Renewal)',
+        monsterSearchSubtitle: 'Buscas un monstruo en especifico? Escribe el nombre o ID y te mostramos sus drops con la chance ajustada de Steal segun tus stats.',
+        monsterNameOrIdLabel: 'Nombre o ID del Monstruo:',
+        monsterQueryPlaceholder: 'Ej: scorpion o 1001',
+        searchDexLabel: 'Cuanta dex tienes en total?',
+        searchStealLevelLabel: 'Nivel de skill Steal?',
+        searchingButton: 'Buscando...',
+        searchMonsterButton: 'Buscar Monstruo',
+        idLabel: 'ID',
+        dropRatioFormulaLabel: 'DropRatio formula',
+        openPlayer: 'Abrir reproductor',
+        minimizePlayer: 'Minimizar reproductor',
+        previousSong: 'Cancion anterior',
+        nextSong: 'Siguiente cancion',
+        pause: 'Pausar',
+        muteToggle: 'Silenciar o activar sonido',
+        errorFillManualBase: 'Completa DEX de usuario, DEX del monstruo y nivel de Steal antes de agregar slots.',
+        errorManualSlotRange: 'Ingresa una chance valida entre 0 y 100 para agregar el slot.',
+        errorSearchFillStats: 'Antes de buscar, ingresa DEX y nivel de Steal en el bloque del buscador (1-10).',
+        errorSearchQuery: 'Ingresa un nombre o ID de monstruo.',
+        errorMonsterNotFound: 'No encontramos ese monstruo en la API. Prueba con otro nombre o con ID numerico (ej: 1001).',
+        errorSearchUnexpected: 'Error inesperado al buscar. Revisa la consola o intenta con el ID numerico del monstruo.',
+        defaultSongTitle: 'Lista lista para reproducir',
+        defaultSongAuthor: 'Playlist de YouTube'
+      }
+    }
+
+    const t = (key) => i18n[language.value]?.[key] || key
+    const toggleLanguage = () => {
+      language.value = language.value === 'en' ? 'es' : 'en'
+    }
+
     const userDex = ref(null)
     const monsterDex = ref(null)
     const skillLevel = ref(null)
@@ -369,6 +506,13 @@ export default {
       noStealChance: 100
     })
     const rateMyServerDrops = ref({})
+
+    const manualSlotChipTitle = (idx, rate) => {
+      const value = Number(rate || 0).toFixed(2)
+      return language.value === 'en'
+        ? `Slot #${idx + 1} · ${value}%`
+        : `Slot #${idx + 1} · ${value}%`
+    }
 
     const toValidNumber = (value) => {
       const parsed = Number(value)
@@ -823,13 +967,13 @@ export default {
 
     const addManualSlot = () => {
       if (!hasManualBaseInputs()) {
-        manualSlotsError.value = 'Completa DEX de usuario, DEX del monstruo y nivel de Steal antes de agregar slots.'
+        manualSlotsError.value = t('errorFillManualBase')
         return
       }
 
       const rate = toValidNumber(manualSlotChance.value)
       if (rate === null || rate < 0 || rate > 100) {
-        manualSlotsError.value = 'Ingresa una chance valida entre 0 y 100 para agregar el slot.'
+        manualSlotsError.value = t('errorManualSlotRange')
         return
       }
 
@@ -933,13 +1077,13 @@ export default {
       rateMyServerDrops.value = {}
 
       if (!validateMonsterSearchInputs()) {
-        monsterError.value = 'Antes de buscar, ingresa DEX y nivel de Steal en el bloque del buscador (1-10).'
+        monsterError.value = t('errorSearchFillStats')
         return
       }
 
       const query = monsterQuery.value.trim()
       if (!query) {
-        monsterError.value = 'Ingresa un nombre o ID de monstruo.'
+        monsterError.value = t('errorSearchQuery')
         return
       }
 
@@ -949,7 +1093,7 @@ export default {
         const itemDbByName = await ensureHerculesItemDb()
         const foundMonster = await findMonsterInHerculesDb(query)
         if (!foundMonster) {
-          monsterError.value = 'No encontramos ese monstruo en la API. Prueba con otro nombre o con ID numerico (ej: 1001).'
+          monsterError.value = t('errorMonsterNotFound')
           return
         }
 
@@ -968,7 +1112,7 @@ export default {
         refreshMonsterDropResults()
       } catch (err) {
         console.error('[Steal Search Error]', err)
-        monsterError.value = 'Error inesperado al buscar. Revisa la consola o intenta con el ID numerico del monstruo.'
+        monsterError.value = t('errorSearchUnexpected')
       } finally {
         isMonsterLoading.value = false
       }
@@ -995,8 +1139,8 @@ export default {
     const isMuted = ref(false)
     const volume = ref(55)
     const isPlayerEnabled = ref(true)
-    const currentSongTitle = ref('Lista lista para reproducir')
-    const currentSongAuthor = ref('Playlist de YouTube')
+    const currentSongTitle = ref(t('defaultSongTitle'))
+    const currentSongAuthor = ref(t('defaultSongAuthor'))
     const isPlayerMinimized = ref(false)
     const isMinimizedRailVisible = ref(false)
     let ytPlayer = null
@@ -1217,6 +1361,10 @@ export default {
       searchMonsterDrops,
       normalizeAssetUrl,
       formatLabel,
+      language,
+      t,
+      toggleLanguage,
+      manualSlotChipTitle,
       manualSlotChance,
       manualSlots,
       manualSlotsError,
@@ -1227,6 +1375,7 @@ export default {
       refreshManualSlotResults,
       bgImage,
       roLogo,
+      uaroLogo,
       angelingGif,
       angelingStill,
       noviceImage,
@@ -1330,6 +1479,31 @@ iframe#yt-player {
   z-index: 2;
 }
 
+.language-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 15;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  background: rgba(255, 255, 255, 0.92);
+  color: #1a1a2e;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.language-toggle:hover {
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
+}
+
 .novice-character {
   position: absolute;
   left: -80px;
@@ -1364,7 +1538,8 @@ h1 {
 
 .logo-wrapper {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
   margin-bottom: 0px;
 }
 
@@ -1372,6 +1547,32 @@ h1 {
   height: 384px;
   width: auto;
   object-fit: contain;
+}
+
+.uaro-logo-wrapper {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.uaro-logo-wrapper a {
+  display: inline-block;
+}
+
+.uaro-logo {
+  height: 90px;
+  width: auto;
+  display: block;
+  animation: pulse-logo 2s ease-in-out infinite;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+}
+
+@keyframes pulse-logo {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
 }
 
 .subtitle {
@@ -1644,20 +1845,22 @@ select:focus {
 }
 
 .manual-slot-btn {
-  background: linear-gradient(135deg, #2b93e8 0%, #236fcb 100%);
-  color: #fff;
+  background: linear-gradient(to bottom, #e9d95a 0%, #d1bc47 100%);
+  color: #ffffff;
   border: none;
   border-radius: 10px;
   padding: 12px 16px;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 8px 20px rgba(26, 113, 192, 0.24);
+  box-shadow: 0 4px 10px rgba(120, 100, 20, 0.2);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .manual-slot-btn:hover {
+  background: linear-gradient(to bottom, #efdf67 0%, #d7c452 100%);
   transform: translateY(-1px);
-  box-shadow: 0 12px 24px rgba(26, 113, 192, 0.3);
+  box-shadow: 0 6px 12px rgba(120, 100, 20, 0.26);
 }
 
 .manual-slot-error {
@@ -1790,21 +1993,22 @@ select:focus {
 
 .monster-search-btn {
   align-self: flex-start;
-  background: linear-gradient(135deg, #2b93e8 0%, #236fcb 100%);
-  color: #fff;
+  background: linear-gradient(to bottom, #e9d95a 0%, #d1bc47 100%);
+  color: #ffffff;
   border: none;
   border-radius: 10px;
   padding: 11px 18px;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 8px 20px rgba(26, 113, 192, 0.24);
+  box-shadow: 0 4px 10px rgba(120, 100, 20, 0.2);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .monster-search-btn:hover {
+  background: linear-gradient(to bottom, #efdf67 0%, #d7c452 100%);
   transform: translateY(-1px);
-  box-shadow: 0 12px 24px rgba(26, 113, 192, 0.3);
+  box-shadow: 0 6px 12px rgba(120, 100, 20, 0.26);
 }
 
 .monster-search-btn:disabled {
