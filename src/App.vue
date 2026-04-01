@@ -332,9 +332,11 @@ const PLAYLIST_ID = 'PL_ePhf-qAdCT8-i7apNym6qmB9giYhWp3'
 const PRE_RE_TARGET_RATE = 5
 const PLAYER_MIN_WIDTH = 1025
 const HERCULES_MOB_DB_URL = 'https://raw.githubusercontent.com/HerculesWS/Hercules/stable/db/pre-re/mob_db.conf'
+const HERCULES_ITEM_DB_URL = 'https://raw.githubusercontent.com/HerculesWS/Hercules/stable/db/pre-re/item_db.conf'
 
 let herculesDbCacheById = null
 let herculesDbCacheList = null
+let herculesItemDbCache = null
 
 export default {
   name: 'App',
@@ -422,6 +424,82 @@ export default {
         .replace(/[^a-z0-9\s]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
+    }
+
+    const parseHerculesItemDb = (raw) => {
+      if (!raw || typeof raw !== 'string') return {}
+
+      const withoutBlockComments = raw.replace(/\/\*[\s\S]*?\*\//g, '')
+      const withoutLineComments = withoutBlockComments
+        .split('\n')
+        .filter((line) => !line.trim().startsWith('//'))
+        .join('\n')
+
+      const marker = 'item_db: ('
+      const markerIndex = withoutLineComments.indexOf(marker)
+      if (markerIndex === -1) return {}
+
+      const body = withoutLineComments.slice(markerIndex + marker.length)
+      const entries = []
+      let depth = 0
+      let start = -1
+
+      for (let i = 0; i < body.length; i += 1) {
+        const ch = body[i]
+        if (ch === '{') {
+          if (depth === 0) start = i
+          depth += 1
+        } else if (ch === '}') {
+          depth -= 1
+          if (depth === 0 && start !== -1) {
+            entries.push(body.slice(start, i + 1))
+            start = -1
+          }
+        }
+      }
+
+      const byName = {}
+      for (const entry of entries) {
+        const idMatch = entry.match(/\bId:\s*(\d+)/)
+        if (!idMatch) continue
+        const itemId = Number(idMatch[1])
+
+        const aegisMatch = entry.match(/\bAegisName:\s*"([^"]+)"/)
+        const nameMatch = entry.match(/\bName:\s*"([^"]+)"/)
+        const jNameMatch = entry.match(/\bJName:\s*"([^"]+)"/)
+
+        const keys = [aegisMatch?.[1], nameMatch?.[1], jNameMatch?.[1]]
+          .map((v) => normalizeItemKey(v || ''))
+          .filter(Boolean)
+
+        for (const key of keys) {
+          if (!byName[key]) {
+            byName[key] = itemId
+          }
+        }
+      }
+
+      return byName
+    }
+
+    const ensureHerculesItemDb = async () => {
+      if (herculesItemDbCache) return herculesItemDbCache
+
+      const response = await fetch(HERCULES_ITEM_DB_URL, { cache: 'no-store' })
+      if (!response.ok) {
+        throw new Error('No se pudo descargar item_db de Hercules')
+      }
+
+      const raw = await response.text()
+      herculesItemDbCache = parseHerculesItemDb(raw)
+      return herculesItemDbCache
+    }
+
+    const getHerculesItemImage = (dropName, itemDbByName) => {
+      const key = normalizeItemKey(dropName)
+      const itemId = itemDbByName?.[key]
+      if (!itemId) return ''
+      return `https://db.irowiki.org/image/item/${itemId}.png`
     }
 
     const parseHerculesMobDb = (raw) => {
@@ -827,6 +905,10 @@ export default {
 
       const keyUsage = {}
       return herculesDrops.map((drop) => {
+        if (drop?.img) {
+          return { ...drop, img: normalizeAssetUrl(drop.img) }
+        }
+
         const key = normalizeItemKey(drop?.name)
         if (!key || !imageBuckets[key]?.length) {
           return { ...drop, img: '' }
@@ -864,14 +946,20 @@ export default {
       isMonsterLoading.value = true
 
       try {
+        const itemDbByName = await ensureHerculesItemDb()
         const foundMonster = await findMonsterInHerculesDb(query)
         if (!foundMonster) {
           monsterError.value = 'No encontramos ese monstruo en la API. Prueba con otro nombre o con ID numerico (ej: 1001).'
           return
         }
 
+        const dropsWithHerculesImages = (foundMonster.drops || []).map((drop) => ({
+          ...drop,
+          img: getHerculesItemImage(drop.name, itemDbByName)
+        }))
+
         const visualData = await fetchMonsterVisualDataById(foundMonster.monster_id)
-        const dropsWithImages = mergeDropImagesFromApi(foundMonster.drops || [], visualData.drops || [])
+        const dropsWithImages = mergeDropImagesFromApi(dropsWithHerculesImages, visualData.drops || [])
         monsterData.value = {
           ...foundMonster,
           gif: visualData.gif,
