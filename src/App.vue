@@ -191,7 +191,7 @@
               :class="resultTierClass(drop.isLastSlot ? 0 : drop.adjustedChance)"
             >
               <div class="drop-card-left">
-                <img :src="normalizeAssetUrl(drop.img)" :alt="drop.name" class="drop-item-thumb" />
+                <img v-if="drop.img" :src="normalizeAssetUrl(drop.img)" :alt="drop.name" class="drop-item-thumb" />
                 <div class="drop-card-copy">
                     <p class="drop-name">#{{ drop.slotIndex }} · {{ formatLabel(drop.name) }}</p>
                   <div class="drop-meta-row">
@@ -331,6 +331,10 @@ import gifVerde from '@/assets/images/verde.gif'
 const PLAYLIST_ID = 'PL_ePhf-qAdCT8-i7apNym6qmB9giYhWp3'
 const PRE_RE_TARGET_RATE = 5
 const PLAYER_MIN_WIDTH = 1025
+const HERCULES_MOB_DB_URL = 'https://raw.githubusercontent.com/HerculesWS/Hercules/stable/db/pre-re/mob_db.conf'
+
+let herculesDbCacheById = null
+let herculesDbCacheList = null
 
 export default {
   name: 'App',
@@ -410,37 +414,148 @@ export default {
         .trim()
     }
 
-    const parseRateMyServerDrops = (html) => {
-      const drops = {}
-      if (!html || typeof html !== 'string') return drops
-
-      const regex = /<div class='mob_drop_icon'[\s\S]*?<\/div>\s*([^<]+?)\s*<div class='boxed_noline'[\s\S]*?<b>\(<\/b>\s*([\d.]+)%\s*<b>\)<\/b>/gi
-      for (const match of html.matchAll(regex)) {
-        const name = match[1]?.trim()
-        const rate = toValidNumber(match[2])
-        if (!name || rate === null) continue
-        const normalizedKey = normalizeItemKey(name)
-        if (!drops[normalizedKey]) {
-          drops[normalizedKey] = []
-        }
-        drops[normalizedKey].push(rate)
-      }
-
-      return drops
+    const normalizeMonsterKey = (value) => {
+      if (!value || typeof value !== 'string') return ''
+      return value
+        .toLowerCase()
+        .replaceAll('_', ' ')
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
     }
 
-    const fetchRateMyServerDrops = async (monsterId) => {
-      if (!monsterId) return {}
-
-      try {
-        const endpoint = `/api/rms/index.php?page=mob_db&mob_id=${encodeURIComponent(monsterId)}&small=1&back=1`
-        const response = await fetch(endpoint, { cache: 'no-store' })
-        if (!response.ok) return {}
-        const html = await response.text()
-        return parseRateMyServerDrops(html)
-      } catch {
-        return {}
+    const parseHerculesMobDb = (raw) => {
+      if (!raw || typeof raw !== 'string') {
+        return { byId: {}, list: [] }
       }
+
+      const withoutBlockComments = raw.replace(/\/\*[\s\S]*?\*\//g, '')
+      const withoutLineComments = withoutBlockComments
+        .split('\n')
+        .filter((line) => !line.trim().startsWith('//'))
+        .join('\n')
+
+      const marker = 'mob_db: ('
+      const markerIndex = withoutLineComments.indexOf(marker)
+      if (markerIndex === -1) {
+        return { byId: {}, list: [] }
+      }
+
+      const body = withoutLineComments.slice(markerIndex + marker.length)
+      const entries = []
+      let depth = 0
+      let start = -1
+
+      for (let i = 0; i < body.length; i += 1) {
+        const ch = body[i]
+        if (ch === '{') {
+          if (depth === 0) start = i
+          depth += 1
+        } else if (ch === '}') {
+          depth -= 1
+          if (depth === 0 && start !== -1) {
+            entries.push(body.slice(start, i + 1))
+            start = -1
+          }
+        }
+      }
+
+      const byId = {}
+      const list = []
+
+      for (const entry of entries) {
+        const idMatch = entry.match(/\bId:\s*(\d+)/)
+        if (!idMatch) continue
+        const id = idMatch[1]
+
+        const nameMatch = entry.match(/\bName:\s*"([^"]+)"/)
+        const spriteMatch = entry.match(/\bSpriteName:\s*"([^"]+)"/)
+        const jNameMatch = entry.match(/\bJName:\s*"([^"]+)"/)
+        const dexMatch = entry.match(/\bStats:\s*\{[\s\S]*?\bDex:\s*(\d+)/)
+        const dropsBlockMatch = entry.match(/\bDrops:\s*\{([\s\S]*?)\n\s*\}/)
+
+        const drops = []
+        if (dropsBlockMatch?.[1]) {
+          const dropLines = dropsBlockMatch[1].split('\n')
+          for (const line of dropLines) {
+            const dm = line.match(/^\s*([A-Za-z0-9_]+):\s*([\d.]+)/)
+            if (!dm) continue
+            const dropName = dm[1]
+            const dropRateRaw = toValidNumber(dm[2])
+            if (dropRateRaw === null) continue
+            drops.push({
+              name: dropName,
+              rate: dropRateRaw / 100,
+              img: ''
+            })
+          }
+        }
+
+        const mob = {
+          monster_id: Number(id),
+          monster_info: nameMatch?.[1] || spriteMatch?.[1] || `Mob ${id}`,
+          alt_name: jNameMatch?.[1] || '',
+          sprite_name: spriteMatch?.[1] || '',
+          main_atb: {
+            dex: toValidNumber(dexMatch?.[1]) ?? 0
+          },
+          drops
+        }
+
+        byId[id] = mob
+        list.push(mob)
+      }
+
+      return { byId, list }
+    }
+
+    const ensureHerculesDb = async () => {
+      if (herculesDbCacheById && herculesDbCacheList) {
+        return { byId: herculesDbCacheById, list: herculesDbCacheList }
+      }
+
+      const response = await fetch(HERCULES_MOB_DB_URL, { cache: 'no-store' })
+      if (!response.ok) {
+        throw new Error('No se pudo descargar la DB de Hercules')
+      }
+      const raw = await response.text()
+      const parsed = parseHerculesMobDb(raw)
+      herculesDbCacheById = parsed.byId
+      herculesDbCacheList = parsed.list
+      return parsed
+    }
+
+    const findMonsterInHerculesDb = async (query) => {
+      const { byId, list } = await ensureHerculesDb()
+      if (/^\d+$/.test(query)) {
+        return byId[query] || null
+      }
+
+      const q = normalizeMonsterKey(query)
+      if (!q) return null
+
+      const exact = list.find((mob) => {
+        const n1 = normalizeMonsterKey(mob.monster_info)
+        const n2 = normalizeMonsterKey(mob.sprite_name)
+        const n3 = normalizeMonsterKey(mob.alt_name)
+        return n1 === q || n2 === q || n3 === q
+      })
+      if (exact) return exact
+
+      const contains = list.filter((mob) => {
+        const n1 = normalizeMonsterKey(mob.monster_info)
+        const n2 = normalizeMonsterKey(mob.sprite_name)
+        const n3 = normalizeMonsterKey(mob.alt_name)
+        return n1.includes(q) || n2.includes(q) || n3.includes(q) || q.includes(n1)
+      })
+
+      if (!contains.length) return null
+      contains.sort((a, b) => {
+        const an = normalizeMonsterKey(a.monster_info)
+        const bn = normalizeMonsterKey(b.monster_info)
+        return Math.abs(an.length - q.length) - Math.abs(bn.length - q.length)
+      })
+      return contains[0]
     }
 
     const isPreRenewalMode = () => true
@@ -509,7 +624,6 @@ export default {
         return
       }
 
-      const dropOccurrences = {}
       let remainingChance = 1
       const monsterDexValue = resolveMonsterDex(monsterData.value)
       const stealBaseChance = herculesStealBaseChance(
@@ -529,15 +643,7 @@ export default {
 
       monsterDropResults.value = dropsWithCoin.map((drop, index) => {
         const rawRate = parseDropRate(drop.rate)
-        const normalizedDropKey = normalizeItemKey(drop.name)
-        const occurrenceIndex = dropOccurrences[normalizedDropKey] ?? 0
-        dropOccurrences[normalizedDropKey] = occurrenceIndex + 1
-
-        const rmsRates = drop.isSynthetic ? [] : (rateMyServerDrops.value[normalizedDropKey] ?? [])
-        const rmsRate = rmsRates[occurrenceIndex] ?? rmsRates[rmsRates.length - 1]
-        const vanillaRate = drop.isSynthetic
-          ? 5
-          : (isPreRenewalMode() && rmsRate !== undefined ? rmsRate : rawRate)
+        const vanillaRate = rawRate
         const targetMultiplier = drop.isSynthetic
           ? 1
           : (isPreRenewalMode() ? PRE_RE_TARGET_RATE : 1)
@@ -550,10 +656,6 @@ export default {
         const reachChance = remainingChance * 100
         const slotFinalChance = remainingChance * perSlotSuccessChance * 100
         remainingChance *= (1 - perSlotSuccessChance)
-        const apiDifferencePercent = !drop.isSynthetic && rmsRate !== undefined && rmsRate > 0
-          ? ((rawRate - rmsRate) / rmsRate) * 100
-          : null
-
         return {
           ...drop,
           rawRate,
@@ -561,7 +663,6 @@ export default {
           targetRateRaw,
           targetRate,
           targetMultiplier,
-          apiDifferencePercent,
           isSynthetic: !!drop.isSynthetic,
           adjustedChance: slotFinalChance,
           slotIndex: index + 1,
@@ -573,7 +674,7 @@ export default {
           slotFinalChance,
           itemRollThreshold: percentToThreshold10k(itemCheckChance),
           stealRollThreshold: percentToThreshold10k(stealBaseChance),
-          uniqueKey: `${drop.name}-${drop.img}-${occurrenceIndex}-${index}`
+          uniqueKey: `${drop.name}-${drop.img || ''}-${index}`
         }
       })
 
@@ -688,86 +789,19 @@ export default {
       return [...new Set(candidates.filter(Boolean))]
     }
 
-    const normalizeMonsterName = (value) => {
-      return String(value || '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, ' ')
-        .trim()
-    }
-
-    const extractMonsterIdsFromIrowikiSearch = (html) => {
-      if (!html || typeof html !== 'string') return null
-
-      const matches = [...html.matchAll(/\/db\/monster-info\/(\d+)\//gi)]
-      const ids = matches.map((match) => match[1]).filter(Boolean)
-      return [...new Set(ids)]
-    }
-
-    const fetchMonsterByCandidate = async (candidate) => {
-      const endpoint = `/api/ragnapi/v1/old-times/monsters/${encodeURIComponent(candidate)}`
+    const fetchMonsterGifById = async (monsterId) => {
+      const endpoint = `/api/ragnapi/v1/old-times/monsters/${encodeURIComponent(monsterId)}`
       const response = await fetch(endpoint, { cache: 'no-store' })
-      if (!response.ok) return null
-
+      if (!response.ok) return ''
       const text = await response.text()
-      if (!text || !text.trim()) return null
+      if (!text || !text.trim()) return ''
 
       try {
-        return JSON.parse(text)
+        const data = JSON.parse(text)
+        return normalizeAssetUrl(data?.gif || '')
       } catch {
-        return null
+        return ''
       }
-    }
-
-    const resolveMonsterIdByName = async (query) => {
-      if (/^\d+$/.test(query)) return query
-
-      const normalizedQuery = normalizeMonsterName(query)
-      const candidates = buildMonsterRequestCandidates(query)
-      for (const candidate of candidates) {
-        try {
-          const data = await fetchMonsterByCandidate(candidate)
-
-          if (data && data.monster_id) {
-            return String(data.monster_id)
-          }
-        } catch {
-          continue
-        }
-      }
-
-      try {
-        const irowikiEndpoint = `https://db.irowiki.org/db/monster-search/?search&name=${encodeURIComponent(query)}`
-        const response = await fetch(irowikiEndpoint, { cache: 'no-store' })
-        if (response.ok) {
-          const html = await response.text()
-          const ids = extractMonsterIdsFromIrowikiSearch(html)
-          for (const id of ids) {
-            try {
-              const data = await fetchMonsterByCandidate(id)
-              if (!data || !data.monster_id) continue
-
-              const apiName = normalizeMonsterName(data.name)
-              if (
-                apiName === normalizedQuery ||
-                apiName.includes(normalizedQuery) ||
-                normalizedQuery.includes(apiName)
-              ) {
-                return String(data.monster_id)
-              }
-            } catch {
-              continue
-            }
-          }
-
-          if (ids.length > 0) return ids[0]
-        }
-      } catch {
-        // Ignore fallback errors and return null below.
-      }
-
-      return null
     }
 
     const searchMonsterDrops = async () => {
@@ -791,36 +825,17 @@ export default {
       isMonsterLoading.value = true
 
       try {
-        const resolvedId = await resolveMonsterIdByName(query)
-        const candidates = buildMonsterRequestCandidates(resolvedId || query)
-        let foundMonster = null
-
-        for (const candidate of candidates) {
-          try {
-            const endpoint = `/api/ragnapi/v1/old-times/monsters/${encodeURIComponent(candidate)}`
-            const response = await fetch(endpoint, { cache: 'no-store' })
-            if (!response.ok) continue
-
-            const data = await response.json()
-            if (data && data.monster_id && Array.isArray(data.drops)) {
-              foundMonster = data
-              break
-            }
-          } catch {
-            continue
-          }
-        }
-
+        const foundMonster = await findMonsterInHerculesDb(query)
         if (!foundMonster) {
           monsterError.value = 'No encontramos ese monstruo en la API. Prueba con otro nombre o con ID numerico (ej: 1001).'
           return
         }
 
-        rateMyServerDrops.value = isPreRenewalMode()
-          ? await fetchRateMyServerDrops(foundMonster.monster_id)
-          : {}
-        foundMonster.gif = normalizeAssetUrl(foundMonster.gif)
-        monsterData.value = foundMonster
+        const gif = await fetchMonsterGifById(foundMonster.monster_id)
+        monsterData.value = {
+          ...foundMonster,
+          gif
+        }
         refreshMonsterDropResults()
       } catch (err) {
         console.error('[Steal Search Error]', err)
